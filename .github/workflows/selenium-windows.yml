@@ -30,29 +30,54 @@ jobs:
       - name: Prepare Python virtualenv & install dependencies (Windows)
         shell: pwsh
         run: |
+          Write-Host "Creating virtual environment at $env:VENV_DIR"
           python -m venv $env:VENV_DIR
-          $venvPip = Join-Path $env:VENV_DIR "Scripts\pip.exe"
 
-          Write-Host "Upgrading pip..."
+          $venvPip = Join-Path $env:VENV_DIR "Scripts\pip.exe"
+          $venvPy  = Join-Path $env:VENV_DIR "Scripts\python.exe"
+
+          Write-Host "Upgrading pip (venv)..."
           & $venvPip install --upgrade pip
 
-          Write-Host "Install Selenium + WebDriver Manager + Framework requirements..."
+          Write-Host "Installing Selenium, webdriver-manager and test plugins into venv..."
           & $venvPip install selenium==4.38.0 webdriver-manager pytest pytest-html allure-pytest pytest-xdist pytest-rerunfailures
 
           if (Test-Path ./selenium-tests/requirements.txt) {
+            Write-Host "Installing project requirements from selenium-tests/requirements.txt..."
             & $venvPip install -r ./selenium-tests/requirements.txt
           }
 
-      - name: Show environment info (debug)
+      - name: Show environment info (venv) - debug
         shell: pwsh
         run: |
-          Write-Host "Python:"; python --version
-          Write-Host "Selenium version:"; python -c "import selenium; print(selenium.__version__)"
-          Write-Host "Chrome version:"
+          $venvPy = Join-Path $env:VENV_DIR "Scripts\python.exe"
+          $venvPip = Join-Path $env:VENV_DIR "Scripts\pip.exe"
+
+          Write-Host "=== venv Python (from $venvPy) ==="
+          & $venvPy --version
+
+          Write-Host "`n=== pip freeze (venv) ==="
+          & $venvPip freeze
+
+          Write-Host "`n=== Selenium version (venv) ==="
+          try {
+            & $venvPy -c "import selenium; print(selenium.__version__)"
+          } catch {
+            Write-Host "selenium is not installed in the venv."
+          }
+
+          Write-Host "`n=== Google Chrome (system) ==="
           try {
             & 'C:\Program Files\Google\Chrome\Application\chrome.exe' --version
           } catch {
-            Write-Host "Chrome not found in default path."
+            Write-Host "Chrome not found in default path"
+          }
+
+          Write-Host "`n=== Chromedriver (if present) ==="
+          try {
+            chromedriver --version
+          } catch {
+            Write-Host "chromedriver not in PATH"
           }
 
       - name: Prepare reports folder
@@ -83,7 +108,11 @@ jobs:
         shell: pwsh
         run: |
           Write-Host "Reports folder contents:"
-          Get-ChildItem -Recurse selenium-tests\reports | Format-Table -AutoSize
+          if (Test-Path "selenium-tests\reports") {
+            Get-ChildItem -Recurse "selenium-tests\reports" | Select-Object FullName,Length | Format-Table -AutoSize
+          } else {
+            Write-Host "selenium-tests\reports does not exist"
+          }
 
       - name: Upload Selenium Reports Artifact
         if: always()
